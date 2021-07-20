@@ -28,10 +28,11 @@ function hygiene(some, linting = true) {
 	const productJson = es.through(function (file) {
 		const product = JSON.parse(file.contents.toString('utf8'));
 
-		if (product.extensionsGallery) {
-			console.error(`product.json: Contains 'extensionsGallery'`);
-			errorCount++;
-		}
+		// Commented by 1478zhcy
+		// if (product.extensionsGallery) {
+		// 	console.error(`product.json: Contains 'extensionsGallery'`);
+		// 	errorCount++;
+		// }
 
 		this.emit('data', file);
 	});
