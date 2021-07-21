@@ -5667,9 +5667,11 @@ declare module 'vscode' {
 		/**
 		 * The background color for this entry.
 		 *
-		 * *Note*: only `new ThemeColor('statusBarItem.errorBackground')` is
-		 * supported for now. More background colors may be supported in the
-		 * future.
+		 * *Note*: only the following colors are supported:
+		 * * `new ThemeColor('statusBarItem.errorBackground')`
+		 * * `new ThemeColor('statusBarItem.warningBackground')`
+		 *
+		 * More background colors may be supported in the future.
 		 *
 		 * *Note*: when a background color is set, the statusbar may override
 		 * the `color` choice to ensure the entry is readable in all themes.
@@ -11551,6 +11553,8 @@ declare module 'vscode' {
 
 	/**
 	 * Represents a notebook editor that is attached to a {@link NotebookDocument notebook}.
+	 * Additional properties of the NotebookEditor are available in the proposed
+	 * API, which will be finalized later.
 	 */
 	export interface NotebookEditor {
 
@@ -11564,12 +11568,12 @@ declare module 'vscode' {
 		/**
 		 * Editor that sent the message.
 		 */
-		editor: NotebookEditor;
+		readonly editor: NotebookEditor;
 
 		/**
 		 * Message sent from the webview.
 		 */
-		message: any;
+		readonly message: any;
 	}
 
 	/**
@@ -11580,14 +11584,15 @@ declare module 'vscode' {
 		/**
 		 * Events that fires when a message is received from a renderer.
 		 */
-		onDidReceiveMessage: Event<NotebookRendererMessage>;
+		readonly onDidReceiveMessage: Event<NotebookRendererMessage>;
 
 		/**
 		 * Sends a message to the renderer.
 		 * @param editor Editor to target with the message
 		 * @param message Message to send
+		 * @returns a boolean indicating whether the message was successfully delivered
 		 */
-		postMessage(editor: NotebookEditor, message: unknown): void;
+		postMessage(editor: NotebookEditor, message: any): Thenable<boolean>;
 	}
 
 	/**
@@ -12327,8 +12332,9 @@ declare module 'vscode' {
 
 		/**
 		 * Creates a new messaging instance used to communicate with a specific
-		 * renderer. The renderer only has access to messaging if `requiresMessaging`
-		 * is set to `always` or `optional` in its `notebookRenderer ` contribution.
+		 * renderer defined in this extension's package.json. The renderer only
+		 * has access to messaging if `requiresMessaging` is set to `always` or
+		 * `optional` in its `notebookRenderer ` contribution.
 		 *
 		 * @see https://github.com/microsoft/vscode/issues/123601
 		 * @param rendererId The renderer ID to communicate with
@@ -13063,6 +13069,13 @@ declare module 'vscode' {
 		 * "parent" debug session.
 		 */
 		parentSession?: DebugSession;
+
+		/**
+		 * Controls whether lifecycle requests like 'restart' are sent to the newly created session or its parent session.
+		 * By default (if the property is false or missing), lifecycle requests are sent to the new session.
+		 * This property is ignored if the session has no parent session.
+		 */
+		lifecycleManagedByParent?: boolean;
 
 		/**
 		 * Controls whether this session should have a separate debug console or share it
