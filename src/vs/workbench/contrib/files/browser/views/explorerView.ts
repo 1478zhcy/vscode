@@ -19,7 +19,7 @@ import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IInstantiationService, ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IProgressService, ProgressLocation } from 'vs/platform/progress/common/progress';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { IContextKeyService, IContextKey, ContextKeyEqualsExpr } from 'vs/platform/contextkey/common/contextkey';
+import { IContextKeyService, IContextKey, ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
 import { ResourceContextKey } from 'vs/workbench/common/resources';
 import { IDecorationsService } from 'vs/workbench/services/decorations/browser/decorations';
 import { WorkbenchCompressibleAsyncDataTree } from 'vs/platform/list/browser/listService';
@@ -161,8 +161,6 @@ export class ExplorerView extends ViewPane {
 
 	private horizontalScrolling: boolean | undefined;
 
-	// Refresh is needed on the initial explorer open
-	private shouldRefresh = true;
 	private dragHandler!: DelayedDragHandler;
 	private autoReveal: boolean | 'focusNoScroll' = false;
 	private decorationsProvider: ExplorerDecorationsProvider | undefined;
@@ -294,11 +292,8 @@ export class ExplorerView extends ViewPane {
 
 		this._register(this.onDidChangeBodyVisibility(async visible => {
 			if (visible) {
-				// If a refresh was requested and we are now visible, run it
-				if (this.shouldRefresh) {
-					this.shouldRefresh = false;
-					await this.setTreeInput();
-				}
+				// Always refresh explorer when it becomes visible to compensate for missing file events #126817
+				await this.setTreeInput();
 				// Find resource to focus from active editor input if set
 				this.selectActiveFile(true);
 			}
@@ -596,8 +591,7 @@ export class ExplorerView extends ViewPane {
 	 */
 	refresh(recursive: boolean, item?: ExplorerItem, cancelEditing: boolean = true): Promise<void> {
 		if (!this.tree || !this.isBodyVisible() || (item && !this.tree.hasNode(item))) {
-			// Tree node doesn't exist yet
-			this.shouldRefresh = true;
+			// Tree node doesn't exist yet, when it becomes visible we will refresh
 			return Promise.resolve(undefined);
 		}
 
@@ -620,7 +614,6 @@ export class ExplorerView extends ViewPane {
 
 	async setTreeInput(): Promise<void> {
 		if (!this.isBodyVisible()) {
-			this.shouldRefresh = true;
 			return Promise.resolve(undefined);
 		}
 
@@ -857,7 +850,7 @@ registerAction2(class extends Action2 {
 			menu: {
 				id: MenuId.ViewTitle,
 				group: 'navigation',
-				when: ContextKeyEqualsExpr.create('view', VIEW_ID),
+				when: ContextKeyExpr.equals('view', VIEW_ID),
 				order: 10
 			}
 		});
@@ -880,7 +873,7 @@ registerAction2(class extends Action2 {
 			menu: {
 				id: MenuId.ViewTitle,
 				group: 'navigation',
-				when: ContextKeyEqualsExpr.create('view', VIEW_ID),
+				when: ContextKeyExpr.equals('view', VIEW_ID),
 				order: 20
 			}
 		});
@@ -902,7 +895,7 @@ registerAction2(class extends Action2 {
 			menu: {
 				id: MenuId.ViewTitle,
 				group: 'navigation',
-				when: ContextKeyEqualsExpr.create('view', VIEW_ID),
+				when: ContextKeyExpr.equals('view', VIEW_ID),
 				order: 30
 			}
 		});
@@ -926,7 +919,7 @@ registerAction2(class extends Action2 {
 			menu: {
 				id: MenuId.ViewTitle,
 				group: 'navigation',
-				when: ContextKeyEqualsExpr.create('view', VIEW_ID),
+				when: ContextKeyExpr.equals('view', VIEW_ID),
 				order: 40
 			}
 		});

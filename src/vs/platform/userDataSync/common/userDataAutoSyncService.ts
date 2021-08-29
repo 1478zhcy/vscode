@@ -3,23 +3,24 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Delayer, disposableTimeout, CancelablePromise, createCancelablePromise, timeout } from 'vs/base/common/async';
-import { Event, Emitter } from 'vs/base/common/event';
-import { Disposable, toDisposable, MutableDisposable, IDisposable } from 'vs/base/common/lifecycle';
-import { IUserDataSyncLogService, IUserDataSyncService, IUserDataAutoSyncService, UserDataSyncError, UserDataSyncErrorCode, IUserDataSyncResourceEnablementService, IUserDataSyncStoreService, UserDataAutoSyncError, ISyncTask, IUserDataSyncStoreManagementService, IUserDataAutoSyncEnablementService, IUserDataManifest } from 'vs/platform/userDataSync/common/userDataSync';
-import { IUserDataSyncAccountService } from 'vs/platform/userDataSync/common/userDataSyncAccount';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { isPromiseCanceledError } from 'vs/base/common/errors';
+import { CancelablePromise, createCancelablePromise, Delayer, disposableTimeout, timeout } from 'vs/base/common/async';
 import { CancellationToken } from 'vs/base/common/cancellation';
-import { IStorageService, StorageScope, IStorageValueChangeEvent, StorageTarget } from 'vs/platform/storage/common/storage';
-import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { IUserDataSyncMachinesService } from 'vs/platform/userDataSync/common/userDataSyncMachines';
-import { localize } from 'vs/nls';
 import { toLocalISOString } from 'vs/base/common/date';
-import { URI } from 'vs/base/common/uri';
-import { isEqual } from 'vs/base/common/resources';
+import { toErrorMessage } from 'vs/base/common/errorMessage';
+import { isPromiseCanceledError } from 'vs/base/common/errors';
+import { Emitter, Event } from 'vs/base/common/event';
+import { Disposable, IDisposable, MutableDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { isWeb } from 'vs/base/common/platform';
+import { isEqual } from 'vs/base/common/resources';
+import { URI } from 'vs/base/common/uri';
+import { localize } from 'vs/nls';
+import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { IProductService } from 'vs/platform/product/common/productService';
+import { IStorageService, IStorageValueChangeEvent, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { ISyncTask, IUserDataAutoSyncEnablementService, IUserDataAutoSyncService, IUserDataManifest, IUserDataSyncLogService, IUserDataSyncResourceEnablementService, IUserDataSyncService, IUserDataSyncStoreManagementService, IUserDataSyncStoreService, UserDataAutoSyncError, UserDataSyncError, UserDataSyncErrorCode } from 'vs/platform/userDataSync/common/userDataSync';
+import { IUserDataSyncAccountService } from 'vs/platform/userDataSync/common/userDataSyncAccount';
+import { IUserDataSyncMachinesService } from 'vs/platform/userDataSync/common/userDataSyncMachines';
 
 type AutoSyncClassification = {
 	sources: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
@@ -562,7 +563,11 @@ class AutoSync extends Disposable {
 
 			// After syncing, get the manifest if it was not available before
 			if (this.manifest === null) {
-				this.manifest = await this.userDataSyncStoreService.manifest(null);
+				try {
+					this.manifest = await this.userDataSyncStoreService.manifest(null);
+				} catch (error) {
+					throw new UserDataAutoSyncError(toErrorMessage(error), error instanceof UserDataSyncError ? error.code : UserDataSyncErrorCode.Unknown);
+				}
 			}
 
 			// Update local session id

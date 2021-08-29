@@ -276,8 +276,11 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 		this._onPanelOrientationChanged.fire(this._terminalLocation === ViewContainerLocation.Panel && this._panelPosition === Position.BOTTOM ? Orientation.HORIZONTAL : Orientation.VERTICAL);
 	}
 
-	addInstance(shellLaunchConfigOrInstance: IShellLaunchConfig | ITerminalInstance): void {
+	addInstance(shellLaunchConfigOrInstance: IShellLaunchConfig | ITerminalInstance, parentTerminalId?: number): void {
 		let instance: ITerminalInstance;
+		// if a parent terminal is provided, find it
+		// otherwise, parent is the active terminal
+		const parentIndex = parentTerminalId ? this._terminalInstances.findIndex(t => t.instanceId === parentTerminalId) : this._activeInstanceIndex;
 		if ('instanceId' in shellLaunchConfigOrInstance) {
 			instance = shellLaunchConfigOrInstance;
 		} else {
@@ -286,12 +289,12 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 		if (this._terminalInstances.length === 0) {
 			this._terminalInstances.push(instance);
 		} else {
-			this._terminalInstances.splice(this._activeInstanceIndex + 1, 0, instance);
+			this._terminalInstances.splice(parentIndex + 1, 0, instance);
 		}
 		this._initInstanceListeners(instance);
 
 		if (this._splitPaneContainer) {
-			this._splitPaneContainer!.split(instance, this._activeInstanceIndex + 1);
+			this._splitPaneContainer!.split(instance, parentIndex + 1);
 		}
 
 		instance.setVisible(this._isVisible);
@@ -432,10 +435,8 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 
 		const oldActiveInstance = this.activeInstance;
 		this._activeInstanceIndex = index;
-		if (force) {
-			if (oldActiveInstance !== this.activeInstance) {
-				this._onInstancesChanged.fire();
-			}
+		if (oldActiveInstance !== this.activeInstance || force) {
+			this._onInstancesChanged.fire();
 			this._onDidChangeActiveInstance.fire(this.activeInstance);
 		}
 	}
@@ -454,9 +455,12 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 			this._panelPosition = this._layoutService.getPanelPosition();
 			this._terminalLocation = this._viewDescriptorService.getViewLocationById(TERMINAL_VIEW_ID)!;
 			const orientation = this._terminalLocation === ViewContainerLocation.Panel && this._panelPosition === Position.BOTTOM ? Orientation.HORIZONTAL : Orientation.VERTICAL;
-			const newLocal = this._instantiationService.createInstance(SplitPaneContainer, this._groupElement, orientation);
-			this._splitPaneContainer = newLocal;
+			this._splitPaneContainer = this._instantiationService.createInstance(SplitPaneContainer, this._groupElement, orientation);
 			this.terminalInstances.forEach(instance => this._splitPaneContainer!.split(instance, this._activeInstanceIndex + 1));
+			if (this._initialRelativeSizes) {
+				this.resizePanes(this._initialRelativeSizes);
+				this._initialRelativeSizes = undefined;
+			}
 		}
 		this.setVisible(this._isVisible);
 	}
@@ -500,7 +504,7 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 
 	split(shellLaunchConfig: IShellLaunchConfig): ITerminalInstance {
 		const instance = this._terminalInstanceService.createInstance(shellLaunchConfig);
-		this.addInstance(instance);
+		this.addInstance(instance, shellLaunchConfig.parentTerminalId);
 		this._setActiveInstance(instance);
 		return instance;
 	}
@@ -523,10 +527,6 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 				this._onPanelOrientationChanged.fire(this._splitPaneContainer.orientation);
 			}
 			this._splitPaneContainer.layout(width, height);
-			if (this._initialRelativeSizes && height > 0 && width > 0) {
-				this.resizePanes(this._initialRelativeSizes);
-				this._initialRelativeSizes = undefined;
-			}
 		}
 	}
 
@@ -559,8 +559,6 @@ export class TerminalGroup extends Disposable implements ITerminalGroup {
 			this._initialRelativeSizes = relativeSizes;
 			return;
 		}
-		// for the local case
-		this._initialRelativeSizes = relativeSizes;
 
 		this._splitPaneContainer.resizePanes(relativeSizes);
 	}

@@ -16,6 +16,7 @@ import { IShellLaunchConfig, TerminalSettingId } from 'vs/platform/terminal/comm
 import { IViewDescriptorService, IViewsService, ViewContainerLocation } from 'vs/workbench/common/views';
 import { ITerminalFindHost, ITerminalGroup, ITerminalGroupService, ITerminalInstance } from 'vs/workbench/contrib/terminal/browser/terminal';
 import { TerminalGroup } from 'vs/workbench/contrib/terminal/browser/terminalGroup';
+import { getInstanceFromResource } from 'vs/workbench/contrib/terminal/browser/terminalUri';
 import { TerminalViewPane } from 'vs/workbench/contrib/terminal/browser/terminalView';
 import { TERMINAL_VIEW_ID } from 'vs/workbench/contrib/terminal/common/terminal';
 import { TerminalContextKeys } from 'vs/workbench/contrib/terminal/common/terminalContextKey';
@@ -145,7 +146,11 @@ export class TerminalGroupService extends Disposable implements ITerminalGroupSe
 		this.groups.push(group);
 		group.addDisposable(group.onDidDisposeInstance(this._onDidDisposeInstance.fire, this._onDidDisposeInstance));
 		group.addDisposable(group.onDidFocusInstance(this._onDidFocusInstance.fire, this._onDidFocusInstance));
-		group.addDisposable(group.onDidChangeActiveInstance(this._onDidChangeActiveInstance.fire, this._onDidChangeActiveInstance));
+		group.addDisposable(group.onDidChangeActiveInstance(e => {
+			if (group === this.activeGroup) {
+				this._onDidChangeActiveInstance.fire(e);
+			}
+		}));
 		group.addDisposable(group.onInstancesChanged(this._onDidChangeInstances.fire, this._onDidChangeInstances));
 		group.addDisposable(group.onDisposed(this._onDidDisposeGroup.fire, this._onDidDisposeGroup));
 		if (group.terminalInstances.length > 0) {
@@ -177,16 +182,7 @@ export class TerminalGroupService extends Disposable implements ITerminalGroupSe
 	}
 
 	getInstanceFromResource(resource: URI | undefined): ITerminalInstance | undefined {
-		if (URI.isUri(resource)) {
-			// note that the uri and and instance id might
-			// not match this window
-			for (const instance of this.instances) {
-				if (instance.resource.path === resource.path) {
-					return instance;
-				}
-			}
-		}
-		return undefined;
+		return getInstanceFromResource(this.instances, resource);
 	}
 
 	findNext(): void {
@@ -307,10 +303,8 @@ export class TerminalGroupService extends Disposable implements ITerminalGroupSe
 
 		const activeInstanceIndex = instanceLocation.instanceIndex;
 
-		if (this.activeGroupIndex !== instanceLocation.groupIndex) {
-			this.activeGroupIndex = instanceLocation.groupIndex;
-			this._onDidChangeActiveGroup.fire(this.activeGroup);
-		}
+		this.activeGroupIndex = instanceLocation.groupIndex;
+		this._onDidChangeActiveGroup.fire(this.activeGroup);
 		instanceLocation.group.setActiveInstanceByIndex(activeInstanceIndex, true);
 		this.groups.forEach((g, i) => g.setVisible(i === instanceLocation.groupIndex));
 

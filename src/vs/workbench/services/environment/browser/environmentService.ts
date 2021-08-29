@@ -17,6 +17,7 @@ import { onUnexpectedError } from 'vs/base/common/errors';
 import { parseLineAndColumnAware } from 'vs/base/common/extpath';
 import { LogLevelToString } from 'vs/platform/log/common/log';
 import { ExtensionKind } from 'vs/platform/extensions/common/extensions';
+import { isUndefined } from 'vs/base/common/types';
 
 class BrowserWorkbenchConfiguration implements IWindowConfiguration {
 
@@ -44,8 +45,7 @@ class BrowserWorkbenchConfiguration implements IWindowConfiguration {
 
 					return [{
 						fileUri: fileUri.with({ path: pathColumnAware.path }),
-						lineNumber: pathColumnAware.line,
-						columnNumber: pathColumnAware.column
+						selection: !isUndefined(pathColumnAware.line) ? { startLineNumber: pathColumnAware.line, startColumn: pathColumnAware.column || 1 } : undefined
 					}];
 				}
 
@@ -235,7 +235,7 @@ export class BrowserWorkbenchEnvironmentService implements IWorkbenchEnvironment
 			|| 'https://{{uuid}}.vscode-webview.net/{{quality}}/{{commit}}/out/vs/workbench/contrib/webview/browser/pre/';
 
 		return endpoint
-			.replace('{{commit}}', this.payload?.get('webviewExternalEndpointCommit') ?? this.productService.commit ?? 'a81fff00c9dab105800118fcf8b044cd84620419')
+			.replace('{{commit}}', this.payload?.get('webviewExternalEndpointCommit') ?? this.productService.commit ?? '5f19eee5dc9588ca96192f89587b5878b7d7180d')
 			.replace('{{quality}}', this.productService.quality || 'insider');
 	}
 

@@ -3,27 +3,27 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Disposable, toDisposable, } from 'vs/base/common/lifecycle';
-import { IUserData, IUserDataSyncStoreService, UserDataSyncErrorCode, IUserDataSyncStore, ServerResource, UserDataSyncStoreError, IUserDataSyncLogService, IUserDataManifest, IResourceRefHandle, HEADER_OPERATION_ID, HEADER_EXECUTION_ID, CONFIGURATION_SYNC_STORE_KEY, IAuthenticationProvider, IUserDataSyncStoreManagementService, UserDataSyncStoreType, IUserDataSyncStoreClient, SYNC_SERVICE_URL_TYPE } from 'vs/platform/userDataSync/common/userDataSync';
-import { IRequestService, asText, isSuccess as isSuccessContext, asJson } from 'vs/platform/request/common/request';
-import { joinPath, relativePath } from 'vs/base/common/resources';
+import { CancelablePromise, createCancelablePromise, timeout } from 'vs/base/common/async';
 import { CancellationToken } from 'vs/base/common/cancellation';
-import { IHeaders, IRequestOptions, IRequestContext } from 'vs/base/parts/request/common/request';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { IProductService } from 'vs/platform/product/common/productService';
+import { getErrorMessage, isPromiseCanceledError } from 'vs/base/common/errors';
+import { Emitter, Event } from 'vs/base/common/event';
+import { Disposable, toDisposable } from 'vs/base/common/lifecycle';
+import { Mimes } from 'vs/base/common/mime';
+import { isWeb } from 'vs/base/common/platform';
 import { ConfigurationSyncStore } from 'vs/base/common/product';
-import { getServiceMachineId } from 'vs/platform/serviceMachineId/common/serviceMachineId';
+import { joinPath, relativePath } from 'vs/base/common/resources';
+import { isArray, isObject, isString } from 'vs/base/common/types';
+import { URI } from 'vs/base/common/uri';
+import { generateUuid } from 'vs/base/common/uuid';
+import { IHeaders, IRequestContext, IRequestOptions } from 'vs/base/parts/request/common/request';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { IFileService } from 'vs/platform/files/common/files';
+import { IProductService } from 'vs/platform/product/common/productService';
+import { asJson, asText, IRequestService, isSuccess as isSuccessContext } from 'vs/platform/request/common/request';
+import { getServiceMachineId } from 'vs/platform/serviceMachineId/common/serviceMachineId';
 import { IStorageService, StorageScope, StorageTarget } from 'vs/platform/storage/common/storage';
-import { generateUuid } from 'vs/base/common/uuid';
-import { isWeb } from 'vs/base/common/platform';
-import { Emitter, Event } from 'vs/base/common/event';
-import { createCancelablePromise, timeout, CancelablePromise } from 'vs/base/common/async';
-import { isString, isObject, isArray } from 'vs/base/common/types';
-import { URI } from 'vs/base/common/uri';
-import { getErrorMessage, isPromiseCanceledError } from 'vs/base/common/errors';
-import { Mimes } from 'vs/base/common/mime';
+import { CONFIGURATION_SYNC_STORE_KEY, HEADER_EXECUTION_ID, HEADER_OPERATION_ID, IAuthenticationProvider, IResourceRefHandle, IUserData, IUserDataManifest, IUserDataSyncLogService, IUserDataSyncStore, IUserDataSyncStoreClient, IUserDataSyncStoreManagementService, IUserDataSyncStoreService, ServerResource, SYNC_SERVICE_URL_TYPE, UserDataSyncErrorCode, UserDataSyncStoreError, UserDataSyncStoreType } from 'vs/platform/userDataSync/common/userDataSync';
 
 const SYNC_PREVIOUS_STORE = 'sync.previous.store';
 const DONOT_MAKE_REQUESTS_UNTIL_KEY = 'sync.donot-make-requests-until';
@@ -285,17 +285,26 @@ export class UserDataSyncStoreClient extends Disposable implements IUserDataSync
 
 		const context = await this.request(url, { type: 'GET', headers }, [304], CancellationToken.None);
 
+		let userData: IUserData | null = null;
 		if (context.res.statusCode === 304) {
-			// There is no new value. Hence return the old value.
-			return oldValue!;
+			userData = oldValue;
 		}
 
-		const ref = context.res.headers['etag'];
-		if (!ref) {
-			throw new UserDataSyncStoreError('Server did not return the ref', url, UserDataSyncErrorCode.NoRef, context.res.statusCode, context.res.headers[HEADER_OPERATION_ID]);
+		if (userData === null) {
+			const ref = context.res.headers['etag'];
+			if (!ref) {
+				throw new UserDataSyncStoreError('Server did not return the ref', url, UserDataSyncErrorCode.NoRef, context.res.statusCode, context.res.headers[HEADER_OPERATION_ID]);
+			}
+
+			const content = await asText(context);
+			if (!content && context.res.statusCode === 304) {
+				throw new UserDataSyncStoreError('Empty response', url, UserDataSyncErrorCode.EmptyResponse, context.res.statusCode, context.res.headers[HEADER_OPERATION_ID]);
+			}
+
+			userData = { ref, content };
 		}
-		const content = await asText(context);
-		return { ref, content };
+
+		return userData;
 	}
 
 	async write(resource: ServerResource, data: string, ref: string | null, headers: IHeaders = {}): Promise<string> {
@@ -333,17 +342,27 @@ export class UserDataSyncStoreClient extends Disposable implements IUserDataSync
 
 		const context = await this.request(url, { type: 'GET', headers }, [304], CancellationToken.None);
 
+		let manifest: IUserDataManifest | null = null;
 		if (context.res.statusCode === 304) {
-			// There is no new value. Hence return the old value.
-			return oldValue!;
+			manifest = oldValue;
 		}
 
-		const ref = context.res.headers['etag'];
-		if (!ref) {
-			throw new UserDataSyncStoreError('Server did not return the ref', url, UserDataSyncErrorCode.NoRef, context.res.statusCode, context.res.headers[HEADER_OPERATION_ID]);
+		if (!manifest) {
+			const ref = context.res.headers['etag'];
+			if (!ref) {
+				throw new UserDataSyncStoreError('Server did not return the ref', url, UserDataSyncErrorCode.NoRef, context.res.statusCode, context.res.headers[HEADER_OPERATION_ID]);
+			}
+
+			const content = await asText(context);
+			if (!content && context.res.statusCode === 304) {
+				throw new UserDataSyncStoreError('Empty response', url, UserDataSyncErrorCode.EmptyResponse, context.res.statusCode, context.res.headers[HEADER_OPERATION_ID]);
+			}
+
+			if (content) {
+				manifest = { ...JSON.parse(content), ref };
+			}
 		}
 
-		const manifest = await asJson<Omit<IUserDataManifest, 'ref'>>(context);
 		const currentSessionId = this.storageService.get(USER_SESSION_ID_KEY, StorageScope.GLOBAL);
 
 		if (currentSessionId && manifest && currentSessionId !== manifest.session) {
@@ -361,7 +380,7 @@ export class UserDataSyncStoreClient extends Disposable implements IUserDataSync
 			this.storageService.store(USER_SESSION_ID_KEY, manifest.session, StorageScope.GLOBAL, StorageTarget.MACHINE);
 		}
 
-		return manifest ? { ...manifest, ref } : null;
+		return manifest;
 	}
 
 	async clear(): Promise<void> {

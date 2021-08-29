@@ -10,7 +10,7 @@ import * as ExtensionsActions from 'vs/workbench/contrib/extensions/browser/exte
 import { ExtensionsWorkbenchService } from 'vs/workbench/contrib/extensions/browser/extensionsWorkbenchService';
 import {
 	IExtensionManagementService, IExtensionGalleryService, ILocalExtension, IGalleryExtension,
-	DidUninstallExtensionEvent, InstallExtensionEvent, IExtensionIdentifier, InstallOperation, IExtensionTipsService, IGalleryMetadata, InstallExtensionResult
+	DidUninstallExtensionEvent, InstallExtensionEvent, IExtensionIdentifier, InstallOperation, IExtensionTipsService, IGalleryMetadata, InstallExtensionResult, CURRENT_TARGET_PLATFORM
 } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { IWorkbenchExtensionEnablementService, EnablementState, IExtensionManagementServerService, IExtensionManagementServer } from 'vs/workbench/services/extensionManagement/common/extensionManagement';
 import { IExtensionRecommendationsService } from 'vs/workbench/services/extensionRecommendations/common/extensionRecommendations';
@@ -110,7 +110,7 @@ async function setupTest() {
 
 	instantiationService.stub(IRemoteAgentService, RemoteAgentService);
 
-	const localExtensionManagementServer = { extensionManagementService: instantiationService.get(IExtensionManagementService), label: 'local', id: 'vscode-local' };
+	const localExtensionManagementServer = { extensionManagementService: instantiationService.get(IExtensionManagementService), label: 'local', id: 'vscode-local', getTargetPlatform() { return Promise.resolve(CURRENT_TARGET_PLATFORM); } };
 	instantiationService.stub(IExtensionManagementServerService, <Partial<IExtensionManagementServerService>>{
 		get localExtensionManagementServer(): IExtensionManagementServer {
 			return localExtensionManagementServer;
@@ -1606,7 +1606,8 @@ suite('RemoteInstallAction', () => {
 		const workbenchService: IExtensionsWorkbenchService = instantiationService.createInstance(ExtensionsWorkbenchService);
 		instantiationService.set(IExtensionsWorkbenchService, workbenchService);
 
-		await instantiationService.get(IWorkbenchExtensionEnablementService).setEnablement([localWorkspaceExtension], EnablementState.DisabledGlobally);
+		const remoteWorkspaceExtension = aLocalExtension('a', { extensionKind: ['workspace'] }, { location: URI.file(`pub.a`).with({ scheme: Schemas.vscodeRemote }) });
+		await instantiationService.get(IWorkbenchExtensionEnablementService).setEnablement([remoteWorkspaceExtension], EnablementState.DisabledGlobally);
 		instantiationService.stubPromise(IExtensionGalleryService, 'query', aPage(aGalleryExtension('a', { identifier: localWorkspaceExtension.identifier })));
 		const testObject: ExtensionsActions.InstallAction = instantiationService.createInstance(ExtensionsActions.RemoteInstallAction, false);
 		instantiationService.createInstance(ExtensionContainers, [testObject]);
@@ -2054,7 +2055,8 @@ suite('LocalInstallAction', () => {
 		const workbenchService: IExtensionsWorkbenchService = instantiationService.createInstance(ExtensionsWorkbenchService);
 		instantiationService.set(IExtensionsWorkbenchService, workbenchService);
 
-		await instantiationService.get(IWorkbenchExtensionEnablementService).setEnablement([remoteUIExtension], EnablementState.DisabledGlobally);
+		const localUIExtension = aLocalExtension('a', { extensionKind: ['ui'] }, { location: URI.file(`pub.a`) });
+		await instantiationService.get(IWorkbenchExtensionEnablementService).setEnablement([localUIExtension], EnablementState.DisabledGlobally);
 		instantiationService.stubPromise(IExtensionGalleryService, 'query', aPage(aGalleryExtension('a', { identifier: remoteUIExtension.identifier })));
 		const testObject: ExtensionsActions.InstallAction = instantiationService.createInstance(ExtensionsActions.LocalInstallAction);
 		instantiationService.createInstance(ExtensionContainers, [testObject]);
@@ -2346,7 +2348,8 @@ function aSingleRemoteExtensionManagementServerService(instantiationService: Tes
 	const remoteExtensionManagementServer: IExtensionManagementServer = {
 		id: 'vscode-remote',
 		label: 'remote',
-		extensionManagementService: remoteExtensionManagementService || createExtensionManagementService()
+		extensionManagementService: remoteExtensionManagementService || createExtensionManagementService(),
+		getTargetPlatform() { return Promise.resolve(CURRENT_TARGET_PLATFORM); }
 	};
 	return {
 		_serviceBrand: undefined,
@@ -2366,12 +2369,14 @@ function aMultiExtensionManagementServerService(instantiationService: TestInstan
 	const localExtensionManagementServer: IExtensionManagementServer = {
 		id: 'vscode-local',
 		label: 'local',
-		extensionManagementService: localExtensionManagementService || createExtensionManagementService()
+		extensionManagementService: localExtensionManagementService || createExtensionManagementService(),
+		getTargetPlatform() { return Promise.resolve(CURRENT_TARGET_PLATFORM); }
 	};
 	const remoteExtensionManagementServer: IExtensionManagementServer = {
 		id: 'vscode-remote',
 		label: 'remote',
-		extensionManagementService: remoteExtensionManagementService || createExtensionManagementService()
+		extensionManagementService: remoteExtensionManagementService || createExtensionManagementService(),
+		getTargetPlatform() { return Promise.resolve(CURRENT_TARGET_PLATFORM); }
 	};
 	return {
 		_serviceBrand: undefined,
